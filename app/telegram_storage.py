@@ -8,6 +8,7 @@ from typing import AsyncIterator, NamedTuple
 
 from dotenv import set_key
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
 from telethon.tl.functions.channels import CreateChannelRequest, DeleteMessagesRequest
 
@@ -63,7 +64,11 @@ class TelegramStorage:
         async with self._lock:
             client = self._clients.get(session_name)
             if client is None:
-                client = TelegramClient(session_name, settings.api_id_int, settings.telegram_api_hash)
+                # Prefer a string session from the environment (deployment-friendly —
+                # no .session file needed on the server) over a file-based session.
+                string_session = settings.telegram_string_sessions.get(session_name)
+                session = StringSession(string_session) if string_session else session_name
+                client = TelegramClient(session, settings.api_id_int, settings.telegram_api_hash)
                 await client.start()
                 if not await client.is_user_authorized():
                     await client.disconnect()

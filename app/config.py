@@ -22,6 +22,22 @@ class Settings:
     _raw_sessions = os.getenv("TELEGRAM_SESSION_NAMES") or os.getenv("TELEGRAM_SESSION_NAME", "televault")
     telegram_session_names = [s.strip() for s in _raw_sessions.split(",") if s.strip()]
 
+    # String sessions: set TELEGRAM_STRING_SESSION_<NAME>=<string> to avoid
+    # needing a .session file on the server (required for Railway / Render / any
+    # platform without a persistent filesystem).
+    # Example for the default "televault" session:
+    #   TELEGRAM_STRING_SESSION_TELEVAULT=1BVtsOKABu...
+    # Generate the value locally with: python scripts/generate_string_session.py
+    @property
+    def telegram_string_sessions(self) -> dict[str, str]:
+        result = {}
+        for name in self.telegram_session_names:
+            key = f"TELEGRAM_STRING_SESSION_{name.upper()}"
+            val = os.getenv(key, "").strip()
+            if val:
+                result[name] = val
+        return result
+
     telegram_storage_channel_id = os.getenv("TELEGRAM_STORAGE_CHANNEL_ID", "").strip()
     chunk_size = int(os.getenv("TELEVAULT_CHUNK_SIZE", str(16 * 1024 * 1024)))
     token_ttl_days = int(os.getenv("TELEVAULT_TOKEN_TTL_DAYS", "30"))

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: televault
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TELEVAULT_ENV
+        value: production
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_STORAGE_CHANNEL_ID
+        sync: false
+      - key: TELEGRAM_STRING_SESSION_TELEVAULT
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEVAULT_APP_BASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
