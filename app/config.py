@@ -12,7 +12,15 @@ load_dotenv(ENV_PATH)
 class Settings:
     app_name = "TeleVault"
     environment = os.getenv("TELEVAULT_ENV", "development")
-    database_url = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'televault.db'}")
+    # Many hosts (Render, Heroku, Railway) expose a "postgres://" URL, but
+    # SQLAlchemy + psycopg2 needs the "postgresql+psycopg2://" driver form.
+    # Normalise it here so DATABASE_URL can be pasted in verbatim.
+    _raw_database_url = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'televault.db'}")
+    if _raw_database_url.startswith("postgres://"):
+        _raw_database_url = _raw_database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif _raw_database_url.startswith("postgresql://") and "+psycopg" not in _raw_database_url:
+        _raw_database_url = _raw_database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    database_url = _raw_database_url
     telegram_api_id = os.getenv("TELEGRAM_API_ID", "")
     telegram_api_hash = os.getenv("TELEGRAM_API_HASH", "")
 

@@ -3,8 +3,15 @@ import react from "@vitejs/plugin-react";
 
 // Dev server proxies /api to the FastAPI backend (uvicorn on :8000) so the
 // browser only ever talks to one origin and no CORS dance is needed locally.
-// `npm run build` outputs to ../static/app so FastAPI can serve the built SPA
-// directly in production (single deployable unit, no separate frontend host).
+//
+// Build output location:
+//   * Default -> ../static/app, so FastAPI can serve the built SPA directly
+//     (single deployable unit, e.g. one Render/Railway service).
+//   * On Vercel (VERCEL=1 is set during its builds) -> ./dist, which Vercel's
+//     Vite preset serves as a static site, talking to a separately-hosted API
+//     via VITE_API_BASE.
+const outDir = process.env.VERCEL ? "dist" : "../static/app";
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -14,7 +21,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../static/app",
+    outDir,
     emptyOutDir: true,
   },
   test: {
