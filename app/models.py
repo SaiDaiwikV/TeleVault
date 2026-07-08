@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+from .timeutils import utcnow
 
 
 class User(Base):
@@ -13,7 +14,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     # Nullable for OAuth-only accounts that have no local password.
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     folders: Mapped[list["Folder"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     files: Mapped[list["File"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
@@ -39,7 +40,7 @@ class OAuthAccount(Base):
     # Human-readable display info; kept up-to-date on each login but never
     # used for auth decisions.
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     user: Mapped[User] = relationship(back_populates="oauth_accounts")
 
@@ -51,7 +52,7 @@ class AuthToken(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Folder(Base):
@@ -62,8 +63,8 @@ class Folder(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("folders.id", ondelete="CASCADE"), nullable=True)
     name: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     owner: Mapped[User] = relationship(back_populates="folders")
 
@@ -75,7 +76,9 @@ class File(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     folder_id: Mapped[int | None] = mapped_column(ForeignKey("folders.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
-    size: Mapped[int] = mapped_column(Integer)
+    # BigInteger: a 2 GiB upload (default cap) is one byte past PostgreSQL's
+    # 32-bit INTEGER max, so a plain Integer would overflow on Postgres.
+    size: Mapped[int] = mapped_column(BigInteger)
     mime: Mapped[str] = mapped_column(String(255), default="application/octet-stream")
     sha256: Mapped[str] = mapped_column(String(64))
     original_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -85,8 +88,8 @@ class File(Base):
     enc_iv_b64: Mapped[str | None] = mapped_column(Text, nullable=True)
     enc_kdf: Mapped[str | None] = mapped_column(String(80), nullable=True)
     enc_iterations: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     owner: Mapped[User] = relationship(back_populates="files")
     chunks: Mapped[list["Chunk"]] = relationship(
@@ -103,10 +106,10 @@ class Chunk(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     file_id: Mapped[int] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"), index=True)
     order: Mapped[int] = mapped_column(Integer)
-    tg_message_id: Mapped[int] = mapped_column(Integer, index=True)
-    size: Mapped[int] = mapped_column(Integer)
+    tg_message_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    size: Mapped[int] = mapped_column(BigInteger)
     sha256: Mapped[str] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     file: Mapped[File] = relationship(back_populates="chunks")
 
@@ -128,7 +131,7 @@ class ShareLink(Base):
     max_downloads: Mapped[int | None] = mapped_column(Integer, nullable=True)
     download_count: Mapped[int] = mapped_column(Integer, default=0)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     file: Mapped[File] = relationship()
 
@@ -150,8 +153,8 @@ class UploadSession(Base):
     folder_id: Mapped[int | None] = mapped_column(ForeignKey("folders.id", ondelete="SET NULL"), nullable=True)
     filename: Mapped[str] = mapped_column(String(255))
     mime: Mapped[str] = mapped_column(String(255), default="application/octet-stream")
-    total_size: Mapped[int] = mapped_column(Integer)
-    received_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    total_size: Mapped[int] = mapped_column(BigInteger)
+    received_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     scratch_path: Mapped[str] = mapped_column(Text)
     encrypted: Mapped[bool] = mapped_column(Boolean, default=True)
     enc_alg: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -161,5 +164,5 @@ class UploadSession(Base):
     enc_iterations: Mapped[int | None] = mapped_column(Integer, nullable=True)
     original_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

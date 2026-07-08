@@ -16,10 +16,12 @@ Flow
 
 Design notes
 ------------
-* We use Authlib's ``httpx`` integration (``AsyncOAuth2Client``) rather than
-  Starlette's session middleware so we avoid adding a server-side session
-  store just for OAuth state.  Instead, the CSRF state is round-tripped as an
-  encrypted signed cookie (``state`` cookie → verified in callback).
+* We talk to the providers with plain ``httpx`` rather than pulling in
+  Starlette's session middleware or a full OAuth client library, so there is
+  no server-side session store to run just for OAuth state.  Instead the CSRF
+  ``state`` value is round-tripped through a short-lived, HttpOnly cookie
+  (``oauth_state``) and compared against the ``state`` query param in the
+  callback.
 * The bearer token placed in the redirect fragment (#token=...) is the same
   opaque ``secrets.token_urlsafe(40)`` used by the local login flow.  The
   browser-side JS reads it with ``window.location.hash``, stores it in
@@ -203,8 +205,6 @@ async def oauth_callback(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     """Step 2 — exchange the authorization code and issue a TeleVault token."""
-    from fastapi import Request
-
     # Surface provider errors (e.g. user denied consent) back to the SPA.
     if error:
         return RedirectResponse(url=f"/#oauth_error={error}", status_code=302)

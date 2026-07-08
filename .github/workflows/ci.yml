@@ -13,8 +13,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt ruff
+      - run: pip install -r requirements-dev.txt ruff
       - run: python -m py_compile app/*.py scripts/*.py
+      - name: Run backend tests
+        run: pytest
       - run: ruff check . || true   # style only, non-blocking for now
 
   secret-scan:

@@ -36,6 +36,10 @@ class _RateLimiter:
     In-memory only — fine for a single-process MVP deployment. A multi-worker
     or multi-instance deployment should replace this with a shared store
     (e.g. Redis) before relying on it for real protection.
+
+    Buckets are evicted once they fully age out, so a long-running process
+    that sees many distinct IP+username keys (e.g. a brute-force sweep) does
+    not accumulate empty deques indefinitely.
     """
 
     def __init__(self, max_attempts: int, window_seconds: int) -> None:
@@ -43,8 +47,21 @@ class _RateLimiter:
         self.window_seconds = window_seconds
         self._hits: dict[str, deque] = defaultdict(deque)
 
+    def _evict_expired(self, now: float) -> None:
+        """Drop keys whose most recent hit is older than the window."""
+        stale = [
+            key
+            for key, bucket in self._hits.items()
+            if not bucket or now - bucket[-1] > self.window_seconds
+        ]
+        for key in stale:
+            del self._hits[key]
+
     def check(self, key: str) -> None:
         now = time.monotonic()
+        # Opportunistic sweep: cheap relative to the auth work that follows,
+        # and bounds memory without needing a background task.
+        self._evict_expired(now)
         bucket = self._hits[key]
         while bucket and now - bucket[0] > self.window_seconds:
             bucket.popleft()

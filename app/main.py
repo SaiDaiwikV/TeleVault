@@ -3,7 +3,8 @@ import mimetypes
 import secrets
 import tempfile
 import uuid
-from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -17,14 +18,47 @@ from sqlalchemy.orm import Session, selectinload
 
 from .auth import current_user, hash_password, issue_token, verify_password
 from .config import BASE_DIR, settings
-from .db import get_db, init_db
+from .db import SessionLocal, get_db, init_db
 from .models import Chunk, File, Folder, ShareLink, UploadSession, User
 from .oauth import router as oauth_router
 from .security import SecurityHeadersMiddleware, enforce_auth_rate_limit
 from .telegram_storage import ChunkIntegrityError, TelegramConfigError, storage
+from .timeutils import utcnow
 
 
-app = FastAPI(title="TeleVault", version="0.2.0")
+def _gc_stale_uploads() -> int:
+    """Delete incomplete upload sessions (and their scratch files) older than
+    the configured TTL. Runs once at startup so abandoned resumable uploads
+    don't accumulate rows and orphaned `.part` files across restarts.
+    """
+    cutoff = utcnow() - timedelta(hours=settings.upload_session_ttl_hours)
+    removed = 0
+    with SessionLocal() as db:
+        stale = db.scalars(
+            select(UploadSession).where(
+                and_(UploadSession.completed.is_(False), UploadSession.created_at < cutoff)
+            )
+        ).all()
+        for session in stale:
+            Path(session.scratch_path).unlink(missing_ok=True)
+            db.delete(session)
+            removed += 1
+        if removed:
+            db.commit()
+    return removed
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Startup: create tables, then reap any abandoned resumable uploads.
+    init_db()
+    _gc_stale_uploads()
+    yield
+    # Shutdown: cleanly close every pooled Telegram session.
+    await storage.disconnect()
+
+
+app = FastAPI(title="TeleVault", version="0.2.0", lifespan=lifespan)
 app.include_router(oauth_router)
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -240,16 +274,6 @@ async def _upload_bytes_to_telegram_or_dedupe(
     return uploaded, False
 
 
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
-
-
-@app.on_event("shutdown")
-async def shutdown() -> None:
-    await storage.disconnect()
-
-
 @app.get("/")
 def index():
     spa_index = _SPA_DIR / "index.html"
@@ -375,6 +399,42 @@ def create_folder(payload: FolderCreate, db: Session = Depends(get_db), user: Us
 def rename_folder(folder_id: int, payload: RenameBody, db: Session = Depends(get_db), user: User = Depends(current_user)):
     folder = owned_folder(db, user, folder_id)
     folder.name = payload.name
+    db.commit()
+    db.refresh(folder)
+    return folder_json(folder)
+
+
+@app.patch("/api/folders/{folder_id}/move")
+def move_folder(folder_id: int, payload: MoveBody, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Re-parent a folder, rejecting moves that would create a cycle.
+
+    A folder can't be moved into itself or into any of its own descendants —
+    doing so would detach a subtree into an unreachable loop.
+    """
+    folder = owned_folder(db, user, folder_id)
+    destination = owned_folder(db, user, payload.folder_id)
+    if destination is not None:
+        # Walk up from the destination; if we reach `folder`, the move is a cycle.
+        cursor = destination
+        while cursor is not None:
+            if cursor.id == folder.id:
+                raise HTTPException(status_code=409, detail="Cannot move a folder into itself or a descendant")
+            cursor = db.get(Folder, cursor.parent_id) if cursor.parent_id is not None else None
+    # Respect the (owner, parent, name) uniqueness constraint with a clean 409
+    # instead of letting the DB raise a raw IntegrityError.
+    clash = db.scalar(
+        select(Folder).where(
+            and_(
+                Folder.owner_id == user.id,
+                Folder.parent_id == payload.folder_id,
+                Folder.name == folder.name,
+                Folder.id != folder.id,
+            )
+        )
+    )
+    if clash is not None:
+        raise HTTPException(status_code=409, detail="A folder with that name already exists in the destination")
+    folder.parent_id = payload.folder_id
     db.commit()
     db.refresh(folder)
     return folder_json(folder)
@@ -561,6 +621,21 @@ async def complete_upload(upload_id: str, db: Session = Depends(get_db), user: U
         scratch_path.unlink(missing_ok=True)
 
 
+@app.delete("/api/uploads/{upload_id}")
+def abort_upload(upload_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Cancel an in-progress resumable upload, freeing its scratch file and row.
+
+    Without this, a client that starts an upload and navigates away leaves the
+    `.part` file and the UploadSession row behind indefinitely. The startup GC
+    sweeps abandoned sessions too, but an explicit cancel reclaims space now.
+    """
+    session = _get_upload_session(db, user, upload_id)
+    Path(session.scratch_path).unlink(missing_ok=True)
+    db.delete(session)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/files/{file_id}/download")
 async def download_file(file_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     record = db.scalar(select(File).options(selectinload(File.chunks)).where(File.id == file_id))
@@ -662,7 +737,7 @@ def create_share_link(file_id: int, payload: ShareCreate, db: Session = Depends(
         file_id=record.id,
         owner_id=user.id,
         token_hash=_share_token_hash(token),
-        expires_at=datetime.utcnow() + timedelta(hours=hours),
+        expires_at=utcnow() + timedelta(hours=hours),
         max_downloads=payload.max_downloads,
     )
     db.add(link)
@@ -685,13 +760,13 @@ def list_share_links(file_id: int, db: Session = Depends(get_db), user: User = D
     links = db.scalars(select(ShareLink).where(ShareLink.file_id == file_id)).all()
     return [
         {
-            "id": l.id,
-            "expires_at": l.expires_at.isoformat() if l.expires_at else None,
-            "max_downloads": l.max_downloads,
-            "download_count": l.download_count,
-            "revoked": l.revoked,
+            "id": link.id,
+            "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+            "max_downloads": link.max_downloads,
+            "download_count": link.download_count,
+            "revoked": link.revoked,
         }
-        for l in links
+        for link in links
     ]
 
 
@@ -711,7 +786,7 @@ async def download_shared_file(token: str, db: Session = Depends(get_db)):
     link = db.scalar(select(ShareLink).where(ShareLink.token_hash == token_hash))
     if link is None or link.revoked:
         raise HTTPException(status_code=404, detail="Link not found or revoked")
-    if link.expires_at and link.expires_at < datetime.utcnow():
+    if link.expires_at and link.expires_at < utcnow():
         raise HTTPException(status_code=410, detail="Link expired")
     if link.max_downloads is not None and link.download_count >= link.max_downloads:
         raise HTTPException(status_code=410, detail="Download limit reached")

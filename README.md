@@ -77,6 +77,20 @@ The original spike is still available for a minimal end-to-end proof:
 python spike.py /path/to/any/file
 ```
 
+## Running the tests
+
+The backend suite is hermetic — it uses a throwaway SQLite DB and an in-memory
+fake for Telegram, so no API credentials or network access are needed:
+
+```bash
+pip install -r requirements-dev.txt
+pytest                       # backend: auth, files/folders, dedup, share links…
+
+cd frontend && npm test      # frontend: vitest smoke + component tests
+```
+
+Both suites run automatically in CI on every push and pull request.
+
 ## Feature overview
 
 **Storage & transport**
@@ -134,9 +148,14 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Summary:
 - [x] PostgreSQL support (`DATABASE_URL`)
 - [x] Resumable uploads
 - [x] **Phase 4** — Flood-wait handling, session pooling, chunk integrity checks
+- [x] Automated test suite — backend `pytest` (auth, files/folders, dedup,
+      share links, ownership isolation, header/rate-limit units) + frontend
+      `vitest`, both run in CI
 - [ ] Encrypted filenames (currently only file contents are encrypted)
 - [ ] Thumbnails for images
-- [ ] Automated test suite / CI test job (CI currently builds + syntax-checks + secret-scans only)
+- [ ] Convergent (deterministic) encryption so client-side dedup can trigger
+      across identical plaintext (today each upload uses a fresh salt/IV, so
+      dedup only catches byte-identical re-uploads of the same ciphertext)
 
 ## Contributing
 

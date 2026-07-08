@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db
 from .models import AuthToken, User
+from .timeutils import utcnow
 
 
 security = HTTPBearer(auto_error=False)
@@ -56,7 +57,7 @@ def issue_token(db: Session, user: User) -> str:
         AuthToken(
             user_id=user.id,
             token_hash=_hash_hex(token),
-            expires_at=datetime.utcnow() + timedelta(days=settings.token_ttl_days),
+            expires_at=utcnow() + timedelta(days=settings.token_ttl_days),
         )
     )
     db.commit()
@@ -71,7 +72,7 @@ def current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
     token_hash = _hash_hex(credentials.credentials)
     token = db.scalar(select(AuthToken).where(AuthToken.token_hash == token_hash))
-    if token is None or token.expires_at < datetime.utcnow():
+    if token is None or token.expires_at < utcnow():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     user = db.get(User, token.user_id)
     if user is None:

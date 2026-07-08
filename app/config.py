@@ -61,6 +61,10 @@ class Settings:
 
     scratch_dir = Path(os.getenv("TELEVAULT_SCRATCH_DIR", str(BASE_DIR / ".scratch")))
 
+    # Incomplete resumable-upload sessions older than this are garbage-collected
+    # at startup, reclaiming their DB rows and orphaned `.part` scratch files.
+    upload_session_ttl_hours = int(os.getenv("TELEVAULT_UPLOAD_SESSION_TTL_HOURS", "24"))
+
     # ── OAuth social login ────────────────────────────────────────────────
     # Public base URL of this app — required for building OAuth callback URLs.
     # Example: https://televault.example.com  (no trailing slash)

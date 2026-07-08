@@ -31,10 +31,10 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from telethon import TelegramClient
-from telethon.sessions import StringSession
+from telethon import TelegramClient  # noqa: E402
+from telethon.sessions import StringSession  # noqa: E402
 
-from app.config import settings
+from app.config import settings  # noqa: E402
 
 
 async def main():
