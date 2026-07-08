@@ -49,7 +49,9 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 # lets the SPA's own index.html reference "/assets/..." unmodified.
 _SPA_DIR = BASE_DIR / "static" / "app"
 _SPA_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/assets", StaticFiles(directory=_SPA_DIR / "assets"), name="app-assets")
+_SPA_ASSETS_DIR = _SPA_DIR / "assets"
+_SPA_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/assets", StaticFiles(directory=_SPA_ASSETS_DIR), name="app-assets")
 
 
 class Credentials(BaseModel):
