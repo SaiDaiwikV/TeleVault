@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TeleVault</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>TeleVault</h1>
+          <p class="muted">Encrypted file storage backed by your private Telegram channel.</p>
+        </div>
+        <div class="status" id="status">Checking backend...</div>
+      </section>
+
+      <section class="auth-panel" id="authPanel">
+        <div class="panel-head">
+          <h2>Sign in</h2>
+          <div class="segmented">
+            <button class="active" id="loginMode" type="button">Login</button>
+            <button id="registerMode" type="button">Register</button>
+          </div>
+        </div>
+        <form id="authForm" class="form-grid">
+          <label>
+            Username
+            <input id="username" autocomplete="username" required minlength="3" />
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" autocomplete="current-password" required minlength="8" />
+          </label>
+          <button class="primary" type="submit">Continue</button>
+        </form>
+      </section>
+
+      <section class="app-grid hidden" id="appPanel">
+        <aside class="sidebar">
+          <div class="identity">
+            <span id="userName"></span>
+            <button id="logoutBtn" type="button">Logout</button>
+          </div>
+          <label>
+            Encryption passphrase
+            <input id="vaultPassphrase" type="password" autocomplete="off" placeholder="Required for upload/download" />
+          </label>
+          <div class="actions">
+            <button id="rootBtn" type="button">Root</button>
+            <button id="newFolderBtn" type="button">New Folder</button>
+          </div>
+          <div class="upload-box">
+            <input id="fileInput" type="file" />
+            <button class="primary" id="uploadBtn" type="button">Encrypt & Upload</button>
+            <progress id="uploadProgress" max="100" value="0"></progress>
+          </div>
+        </aside>
+
+        <section class="content">
+          <div class="toolbar">
+            <div>
+              <h2 id="folderTitle">Root</h2>
+              <p class="muted" id="itemCount">0 items</p>
+            </div>
+            <input id="searchInput" placeholder="Search files and folders" />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Chunks</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="itemsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+      <div class="toast" id="toast"></div>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+# Secrets — never commit
+.env
+*.session
+*.session-journal
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Spike test artifacts
+testfile_*.bin
+downloaded_*.bin
+televault.db
+*.db-journal
+
+# Runtime temp/logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+static/app/
+
+# Resumable-upload scratch space
+.scratch/
