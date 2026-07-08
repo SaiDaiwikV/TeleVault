@@ -5,6 +5,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      # SQLAlchemy 2.0.36 doesn't support Python 3.14 (Render's current
+      # default), so pin to a supported 3.12. Kept in sync with .python-version.
+      - key: PYTHON_VERSION
+        value: "3.12.8"
       - key: TELEVAULT_ENV
         value: production
       - key: TELEGRAM_API_ID
